@@ -2,6 +2,22 @@
 
 Apache Kafka is a distributed event streaming platform. It is designed to handle high-throughput, real-time data feeds reliably.
 
+---
+
+## Contents
+
+- [Why Kafka?](#why-kafka)
+  - [The Problem: Event-Heavy Applications](#the-problem-event-heavy-applications)
+  - [Why Not Just Use APIs?](#why-not-just-use-apis)
+  - [Real-World Scale](#real-world-scale)
+- [How Kafka Works](#how-kafka-works)
+  - [Core Concepts](#core-concepts)
+  - [Decoupled Communication](#key-advantage-decoupled-communication)
+  - [Offsets](#offsets)
+  - [Why "Distributed"?](#why-distributed)
+
+---
+
 ## Why Kafka?
 
 ### The Problem: Event-Heavy Applications
@@ -43,6 +59,8 @@ This isn't just a food delivery problem:
 
 Direct API-based communication simply doesn't work at this scale. You need a distributed event streaming platform.
 
+---
+
 ## How Kafka Works
 
 ### Core Concepts
@@ -56,13 +74,12 @@ flowchart LR
     T --> C3["Consumer 3"]
 ```
 
-1. **Broker**: A single Kafka server instance (similar to a node in a Kubernetes cluster). It stores and serves data.
-
-2. **Topic**: A named category/feed to which messages are published. Think of it as a channel. Producers write to topics, consumers read from topics.
-
-3. **Producer**: Publishes events/messages to a topic.
-
-4. **Consumer**: Reads events/messages from a topic. Multiple independent consumers can read from the same topic at their own pace.
+| Term | What it is |
+|------|------------|
+| **Broker** | A single Kafka server instance (similar to a node in a Kubernetes cluster). It stores and serves data. |
+| **Topic** | A named category/feed to which messages are published. Think of it as a channel. Producers write to topics, consumers read from topics. |
+| **Producer** | Publishes events/messages to a topic. |
+| **Consumer** | Reads events/messages from a topic. Multiple independent consumers can read from the same topic at their own pace. |
 
 ### Key Advantage: Decoupled Communication
 
