@@ -7,15 +7,15 @@ A collection of notes, concepts, and implementations for system design topics.
 ```
 system-design/
 ├── README.md
-├── INSTRUCTIONS.md
-├── concepts/          # Core concepts and theory (Kafka, Load Balancing, CAP, etc.)
+├── INSTRUCTIONS.md    # Writing guidelines and concept template
+├── .gitignore
+├── concepts/          # Core concepts and theory
 ├── implementations/   # Hands-on code and projects
 └── case-studies/      # System design breakdowns (e.g., design Twitter, design Uber)
 ```
 
 ## Concepts
 
-| Topic | File |
-|-------|------|
-| Kafka | [concepts/kafka.md](concepts/kafka.md) |
-
+| Topic | Description | File |
+|-------|-------------|------|
+| Kafka | Distributed event streaming platform | [kafka.md](concepts/kafka.md) |
