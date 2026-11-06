@@ -99,7 +99,7 @@ A production Kafka setup runs as a **cluster** with multiple brokers, not just o
 
 ```mermaid
 flowchart TD
-    subgraph Kafka Cluster
+    subgraph KC["Kafka Cluster"]
         B1["Broker 1"]
         B2["Broker 2"]
         B3["Broker 3"]
@@ -109,8 +109,8 @@ flowchart TD
     B2 --- B3
     B1 --- B3
 
-    P["Producers"] --> Kafka Cluster
-    Kafka Cluster --> C["Consumers"]
+    P["Producers"] --> KC
+    KC --> C["Consumers"]
 ```
 
 Topics are spread across all brokers in the cluster through **partitions**. This gives Kafka:
