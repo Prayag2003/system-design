@@ -15,6 +15,8 @@ Apache Kafka is a distributed event streaming platform. It is designed to handle
   - [Decoupled Communication](#key-advantage-decoupled-communication)
   - [Offsets](#offsets)
   - [Why "Distributed"?](#why-distributed)
+  - [Partitions and Consumer Groups](#partitions-and-consumer-groups)
+- [Summary](#summary)
 
 ---
 
@@ -119,4 +121,47 @@ Topics are spread across all brokers in the cluster through **partitions**. This
 - **Fault tolerance**: If one broker goes down, other brokers still have copies of the data (via replication).
 - **High throughput**: Multiple brokers can serve reads and writes in parallel.
 
-> A topic is a logical concept. Physically, it is split into partitions that live on different brokers.
+### Partitions and Consumer Groups
+
+A topic is a logical stream, but Kafka stores it as a set of **partitions**. Each partition is an ordered, append-only log. This means a topic can scale horizontally by spreading different partitions across different brokers.
+
+A producer can send messages to a specific partition, or Kafka can choose one based on a message key. If the same key is used, Kafka usually sends all messages for that key to the same partition, which preserves order for that key.
+
+```mermaid
+flowchart LR
+    P[Producers] --> T[Topic: orders]
+    T --> P0[Partition 0]
+    T --> P1[Partition 1]
+    T --> P2[Partition 2]
+
+    P0 --> C0[Consumer 0]
+    P1 --> C1[Consumer 1]
+    P2 --> C2[Consumer 2]
+```
+
+Now think about consumer groups. A consumer group is a set of consumers working together to process a topic. Kafka guarantees that each partition is assigned to only one consumer in the group at a time. That gives a useful pattern:
+
+- If you start 10 pods in the same consumer group and the topic has 10 partitions, Kafka can distribute one partition to each pod.
+- If you start 3 pods for a 10-partition topic, some pods will process multiple partitions.
+- If you start a second consumer group, both groups can read the same topic independently, which is why Kafka is often used for both real-time processing and analytics.
+
+Each partition has a **leader**. The leader handles reads and writes for that partition, while followers replicate the data for fault tolerance. This is how Kafka keeps a stream available even if one broker fails.
+
+A few practical notes:
+
+- Too many partitions can add operational complexity and overhead.
+- The right number of brokers, topics, and partitions depends on throughput and latency requirements.
+- For most teams, a managed Kafka service such as Aiven or Confluent is the simplest place to start.
+
+---
+
+## Summary
+
+| Concept | One-liner |
+|---------|------------|
+| **Topic** | A named stream of events. |
+| **Broker** | A Kafka server that stores and serves data. |
+| **Partition** | A shard of a topic that allows parallelism and scale. |
+| **Consumer group** | A set of consumers that share a topic by splitting partitions among themselves. |
+| **Offset** | The position of a message inside a partition. |
+| **Leader/Follower** | A partition leader serves reads and writes, while followers replicate data for resilience. |
