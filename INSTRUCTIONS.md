@@ -1,14 +1,16 @@
 # Instructions
 
-Guidelines for contributing to this repo. We'll iterate on these as the repo grows.
+Guidelines for contributing to this repo. We'll iterate on these as the repo grows. Think of preparing for a System Design Interview (including HLD, LLD/Machine Coding rounds) for product-based companies.
 
 ## Writing Style
 
-- Keep explanations simple and conversational. Avoid jargon unless it's being defined.
-- Use real-world examples to motivate concepts before diving into the how.
-- Use diagrams (Mermaid) when they make the explanation clearer.
-- Use tables for definitions and quick-reference summaries.
+- Keep explanations simple and conversational but do not loose any information/facts. Avoid jargon unless it's being defined.
+- Use real-world engineering examples to motivate concepts before diving into the how.
+- Use diagrams (Mermaid) when they make the explanation clearer. Keep diagrams detail oriented and not just arrows and boxes.
+- try to include the excalidraw based diagrams for better understanding
+- Use index/tables for definitions and quick-reference summaries.
 - No em dashes.
+- Check out for the #TODO and complete that assigned task.
 - Structure each concept file with: **What it is -> Why it matters -> How it works -> Summary**.
 - **Only refactor and paraphrase content the author has written.** Do not generate new topics or sections that haven't been provided. Keep it to what's there, just make it cleaner.
 
@@ -25,7 +27,7 @@ Guidelines for contributing to this repo. We'll iterate on these as the repo gro
 ```markdown
 # [Topic Name]
 
-One-liner description.
+1-2 liner description.
 
 ---
 
