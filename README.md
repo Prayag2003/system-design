@@ -18,4 +18,4 @@ system-design/
 
 | Topic | Description | File |
 |-------|-------------|------|
-| Kafka | Distributed event streaming platform | [kafka.md](concepts/kafka.md) |
+| Kafka | Distributed event streaming platform | [concepts/kafka/](concepts/kafka/) |
