@@ -1,7 +1,5 @@
 # The Problem: Why We Need Kafka
 
----
-
 ## Contents
 
 - [Event-Heavy Applications](#event-heavy-applications)
