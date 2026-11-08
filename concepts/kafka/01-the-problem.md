@@ -17,6 +17,7 @@
   - [Message Queues](#6-message-queues)
   - [Event Streaming (Kafka)](#7-event-streaming-kafka)
   - [Comparison](#comparison)
+  - [Message Queue vs Event Streaming](#message-queue-vs-event-streaming)
 
 ---
 
@@ -191,3 +192,30 @@ Key trait: events are retained (not deleted on consumption), so consumers can re
 | Message queues | Yes | Yes | Yes | Task distribution, work queues |
 | **Event streaming (Kafka)** | **Yes** | **Yes** | **Yes** | **High-throughput, multi-consumer event processing** |
 
+### Message Queue vs Event Streaming
+
+These two are often confused, but they solve different problems.
+
+**Message Queue** (think: task queue / to-do list)
+- Each message is a job to be done.
+- Process it once, then it's gone from the queue.
+- Typically one consumer per message.
+- Example: send a confirmation email for an order and forget it.
+- Examples: RabbitMQ, Amazon SQS.
+
+**Event Streaming** (think: immutable log / history)
+- Each event is a fact that happened. It never changes.
+- Multiple consumers can read the same event independently.
+- Events can be replayed at any time.
+- Retention is configurable (e.g., 7 days, 30 days, or indefinite).
+- Consumption does not delete the event.
+- Example: Apache Kafka.
+
+| Feature | Message Queue | Event Streaming |
+|---------|---------------|-----------------|
+| Who consumes? | One consumer per message | Many consumers independently |
+| Message removal | After consumption | Never (until retention expires) |
+| Replay messages | No | Yes |
+| Consumer state | Queue manages position | Consumer manages its own offset |
+
+> Kafka can act as both a message queue and an event streaming platform, but it is primarily used as an event streaming system.
