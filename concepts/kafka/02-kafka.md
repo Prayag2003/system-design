@@ -25,6 +25,12 @@ Kafka is a distributed log file that acts as a distributed event streaming platf
 - [Complete End-to-End Flow](#complete-end-to-end-flow)
 - [Why Ordering Is Guaranteed Only Within a Partition](#why-is-ordering-guaranteed-only-within-a-partition)
 - [Consumer Partition Assignment](#consumer-partition-assignment)
+- [How Many Partitions Should We Choose?](#how-many-partitions-should-we-choose)
+- [Can We Increase Partitions Later?](#can-we-increase-partitions-later)
+- [When Are Events Deleted from Kafka?](#when-are-events-deleted-from-kafka)
+- [Offset Commit Strategies](#offset-commit-strategies)
+- [Delivery Guarantees](#delivery-guarantees)
+- [How Does a Consumer Know an Event Has Arrived? (Long Polling)](#how-does-a-consumer-know-an-event-has-arrived-long-polling)
 
 ---
 
@@ -417,3 +423,137 @@ Consumer Group 2 (Independent parallel consumption):
   C5 -> P2
   C6 -> P3
 ```
+
+## How Many Partitions Should We Choose?
+
+Choosing the number of partitions is a design-time architectural decision as well as a capacity planning decision.
+
+### Key Factors:
+1. **Expected Throughput (events/sec or MB/sec)**:
+   - If a single consumer instance can process 1,000 events/sec and your expected topic load is 10,000 events/sec, you need at least 10 partitions so 10 consumers can process in parallel.
+2. **Maximum Consumers Needed**:
+   - Within a consumer group, each partition is consumed by only one consumer at a time. The partition count represents the maximum concurrency ceiling for that consumer group. Extra consumers beyond the partition count will sit idle.
+3. **Broker Capacity and Resource Limits**:
+   - Every partition maps to open file descriptors, directory handles, and memory buffers on the broker. Over-partitioning without need adds overhead to the Kafka controller and increases failover/rebalance times.
+4. **Future Growth**:
+   - Plan ahead for 1-2 years of anticipated traffic growth to avoid having to repartition under heavy production load.
+
+### Rule of Thumb:
+| Scale | Partition Count | Typical Scenarios |
+|-------|-----------------|-------------------|
+| **Small** | 3 - 6 | Low throughput, internal jobs, dev/staging environments |
+| **Medium** | 12 - 24 | Standard production workloads, inter-service event communication |
+| **Large** | 50+ | High-throughput systems (payment feeds, user clickstreams, telemetry, ad tech) |
+
+## Can We Increase Partitions Later?
+
+Yes, you can increase partitions using Kafka CLI tools, but with a critical caveat.
+
+- **The Caveat (Ordering issue)**:
+  - When messages have keys, Kafka assigns partitions using a hash function:
+    $$\text{partition} = \text{hash}(\text{key}) \ \pmod N$$
+  - If you change the partition count $N$ (e.g., from 3 to 6), newly produced messages with the same key will hash to a different partition than previous messages.
+  - As a result, sequential order across all events for that key (e.g., `orderId = 123`) is broken across the transition period.
+- **Why partition failure is different**:
+  - When a partition replica or broker goes down, the total partition count $N$ remains unchanged. Kafka simply promotes another in-sync replica (ISR) to become the leader for that partition. The key hashing calculation stays intact, so ordering is preserved.
+
+## When Are Events Deleted from Kafka?
+
+Kafka does not delete messages after consumption. Multiple consumer groups can read the same message independently, and consumers can replay past events.
+
+Messages are deleted strictly based on configured cleanup and retention policies:
+
+1. **Time-based (`retention.ms` / `log.retention.hours`)**:
+   - Deletes log segments after a specific elapsed duration (default: 7 days / 168 hours).
+2. **Size-based (`retention.bytes` / `log.retention.bytes`)**:
+   - Deletes the oldest segment files when total partition disk usage exceeds a defined byte limit.
+3. **Log Compaction (`cleanup.policy = compact`)**:
+   - Instead of discarding old logs solely by age or size, Kafka keeps at least the most recent record for each message key. Ideal for storing current-state snapshots (e.g., customer account state, config changes).
+
+## Offset Commit Strategies
+
+How and when the consumer reports its processed offset back to Kafka controls reliability and performance.
+
+### 1. Auto Commit (`enable.auto.commit = true`)
+- Kafka client automatically commits offsets in the background at regular intervals (e.g., every `auto.commit.interval.ms = 5000ms`).
+- **The Risk**:
+  - If the consumer fetches 100 messages, processes 40, and crashes while the background thread has already committed offset 100 to `__consumer_offsets`.
+  - When a replacement consumer boots up, it picks up from offset 101. The remaining 60 messages are skipped and **permanently lost**.
+- **Verdict**: Not recommended for mission-critical production pipelines.
+
+### 2. Manual Commit (`enable.auto.commit = false`) (Recommended)
+The consumer application explicitly commits offsets in code after successfully completing business logic.
+
+- **Synchronous Commit (`commitSync()`)**:
+  - Blocks the thread until the broker acknowledges the offset commit.
+  - Highly reliable, but reduces throughput due to network round-trip wait time.
+- **Asynchronous Commit (`commitAsync()`)**:
+  - Fires off the commit request without waiting for the broker reply.
+  - Higher throughput, but requires careful handling because a retried earlier commit might overwrite a newer committed offset.
+
+## Delivery Guarantees
+
+The combination of producer reliability settings, consumer commit timing, and consumer idempotency determines your end-to-end delivery guarantees.
+
+| Guarantee | How It Works | Trade-offs & Failure Behavior | Real-World Engineering Use Case |
+|-----------|--------------|-------------------------------|----------------------------------|
+| **At-most-once** | Commit offset **before** processing | If consumer crashes mid-processing, message is lost forever. **Zero duplicate risk, high data-loss risk.** | Non-critical logs, metrics/telemetry pings, live location tracking |
+| **At-least-once** *(Industry standard)* | Commit offset **after** successful processing | If consumer crashes after processing but before commit completes, message is re-read on recovery. **Zero data-loss risk, potential duplicate delivery.** Downstream consumers must be **idempotent**. | Payment webhooks, order placement, email notifications, inventory updates |
+| **Exactly-once (EOS)** | Idempotent producer (`enable.idempotence=true`) + Kafka Transaction API (`read_committed`) | Transaction coordination across topics/partitions with state commits. Highest processing overhead and configuration complexity. | Financial transactions, bank ledgers, payment processing, fraud balance computations |
+
+### Code Comparison: Commit Timing
+
+**At-most-once (Commit before processing):**
+```java
+ConsumerRecords<String, String> records = consumer.poll(Duration.ofMillis(100));
+for (ConsumerRecord<String, String> record : records) {
+    consumer.commitSync(); // 1. Commit offset first
+    process(record);       // 2. If failure occurs here, message is lost forever
+}
+```
+
+**At-least-once (Commit after processing):**
+```java
+ConsumerRecords<String, String> records = consumer.poll(Duration.ofMillis(100));
+for (ConsumerRecord<String, String> record : records) {
+    process(record);       // 1. Process business logic first
+    consumer.commitSync(); // 2. Commit offset only upon success (crash before commit causes replay)
+}
+```
+
+## How Does a Consumer Know an Event Has Arrived? (Long Polling)
+
+Kafka relies on a client-driven **pull-based approach using long polling**, rather than a server push model.
+
+- **Long Polling Mechanics**:
+  - The consumer issues a poll call: `consumer.poll(Duration.ofMillis(500))`.
+  - **Data available**: The broker immediately returns the waiting batch.
+  - **No data available**: The broker holds the request open for up to `fetch.max.wait.ms` (e.g., 500ms), waiting for incoming writes.
+  - **Data arrives during wait**: The broker responds immediately as soon as new records are appended.
+  - **Timeout expires without data**: The broker sends back an empty response, and the consumer client continues its poll loop.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor C as Consumer
+    participant B as Broker (Partition Leader)
+
+    Note over C,B: Case 1: Data readily available
+    C->>B: poll(timeout = 500ms)
+    B-->>C: Immediate response [Batch of records]
+
+    Note over C,B: Case 2: No data (Broker waits up to timeout)
+    C->>B: poll(timeout = 500ms)
+    Note over B: No records available - holds connection
+    Note over B: Producer appends new record
+    B-->>C: Returns record immediately
+
+    Note over C,B: Case 3: Empty partition (Timeout elapsed)
+    C->>B: poll(timeout = 500ms)
+    Note over B: No data arrives within 500ms
+    B-->>C: Returns empty response []
+```
+
+### Why Pull-Based Long Polling?
+- **Protects consumers from getting overwhelmed**: Slow or degraded downstream consumers dictate their own consumption pace instead of being flooded by producer spikes.
+- **Efficient batching**: Consumers can configure `fetch.min.bytes` to accumulate batches over the wait window, maximizing disk read and network I/O efficiency.
