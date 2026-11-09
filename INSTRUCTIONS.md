@@ -5,14 +5,14 @@ Guidelines for contributing to this repo. We'll iterate on these as the repo gro
 ## Writing Style
 
 - Keep explanations simple and conversational but do not loose any information/facts. Avoid jargon unless it's being defined.
-- Use real-world engineering examples to motivate concepts before diving into the how.
+- Use real-world engineering/industry standard examples to motivate concepts before diving into the how.
 - Use diagrams (Mermaid) when they make the explanation clearer. Keep diagrams detail oriented and not just arrows and boxes.
 - try to include the excalidraw based diagrams for better understanding
 - Use index/tables for definitions and quick-reference summaries.
 - No em dashes.
 - Check out for the #TODO and complete that assigned task.
 - Structure each concept file with: **What it is -> Why it matters -> How it works -> Summary**.
-- **Only refactor and paraphrase content the author has written.** Do not generate new topics or sections that haven't been provided. Keep it to what's there, just make it cleaner.
+- **Do not loose any information written by the author, feel free to try to improve on it and add your own real-world engineering knowledge.** Do not generate new topics or sections that haven't been provided. Keep it to what's there.
 
 ## File Organization
 

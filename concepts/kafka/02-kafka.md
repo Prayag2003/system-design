@@ -21,6 +21,10 @@ Kafka is a distributed log file that acts as a distributed event streaming platf
 - [What Is a Broker?](#what-is-a-broker)
 - [What If Wrong Data Goes Into Kafka?](#what-if-wrong-data-goes-into-kafka)
 - [Partition Replication](#partition-replication)
+- [Kafka Metadata](#kafka-metadata)
+- [Complete End-to-End Flow](#complete-end-to-end-flow)
+- [Why Ordering Is Guaranteed Only Within a Partition](#why-is-ordering-guaranteed-only-within-a-partition)
+- [Consumer Partition Assignment](#consumer-partition-assignment)
 
 ---
 
@@ -260,4 +264,156 @@ Events are automatically deleted after the retention period.
 
 ## Partition Replication
 
-Helps avoid single points of failure (SPOF).
+Replication helps avoid single points of failure (SPOF).
+
+```bash
+kafka-topics.sh --create \
+  --topic orders \
+  --partitions 6 \
+  --replication-factor 2
+```
+
+Key points:
+- Replicas are placed across different brokers.
+- For each partition, Kafka assigns one **partition leader**.
+- All reads and writes go through the partition leader. SPOF is handled by the leader-follower pattern.
+- Followers sync data using a pull/poll-based mechanism.
+- If the leader fails, an in-sync follower takes over as the new leader.
+
+### How Many Replicas Do We Keep?
+
+| Replication Factor | When to Use |
+|--------------------|-------------|
+| 1 | Dev / testing |
+| 2 | Small internal systems |
+| 3 | Industry standard (most common interview answer) |
+| 4+ | Very critical systems |
+
+**Why is 3 the standard?**
+- Can tolerate 1 broker failure safely.
+- Good balance of hardware cost vs fault tolerance.
+
+## Kafka Metadata
+
+How does Kafka know which broker is the leader for a partition?
+
+Metadata is maintained by the **Kafka Controller**. It tracks:
+- Topic list
+- Partitions
+- Leader broker for each partition
+- Replica brokers
+- ISR (In-Sync Replicas)
+
+This metadata is stored inside the cluster, managed by the controller, and shared with clients (producers and consumers).
+- **Older Kafka**: relied on ZooKeeper for metadata.
+- **Newer Kafka**: uses KRaft (built-in consensus).
+
+### Partition Placement Goals
+
+When a topic is created, Kafka decides partition and replica distribution with these goals:
+- Even distribution across brokers.
+- No single broker is overloaded.
+- Replicas of the same partition never live on the same physical machine.
+
+Example distribution across 3 brokers:
+- `Partition 0` -> Leader = B1, Follower = B2
+- `Partition 1` -> Leader = B2, Follower = B3
+- `Partition 2` -> Leader = B3, Follower = B1
+
+### What Metadata Looks Like
+
+Think of metadata like a routing table:
+
+```yaml
+# Schema structure                       # Concrete topic example
+Cluster:                                 orders-topic:
+  brokers:                                 partition 0:
+    brokerId -> host:port                    leader: broker 1
+                                             replicas: [1, 2]
+Topics:                                      ISR: [1, 2]
+  topicName:
+    partitions:                            partition 1:
+      partitionId:                           leader: broker 2
+        leader: brokerId                     replicas: [2, 3]
+        replicas: [brokerId, ...]            ISR: [2, 3]
+        ISR: [brokerId, ...]
+```
+
+## Complete End-to-End Flow
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor P as Producer
+    participant B as Any Broker
+    participant L as Leader Broker (B2)
+    participant F as Followers (ISRs)
+    participant C as Consumer
+
+    Note over P,B: Metadata Discovery
+    P->>B: Connect & request cluster metadata
+    B-->>P: Metadata (brokers, topics, partition leaders)
+    
+    Note over P,L: Message Publishing
+    P->>P: Select partition: hash(key) % N (or Round Robin)
+    P->>L: Send event directly to leader broker (no proxy/LB)
+    L->>L: Append record to disk & assign offset
+    
+    Note over L,F: Replication
+    F->>L: Pull latest records
+    L-->>F: Data batches
+    F->>F: Append to local log & send ACK
+    L-->>P: ACK to producer (if acks=all, waits for ISRs)
+    
+    Note over C,L: Consumption
+    C->>L: Poll data by partition offset
+    L-->>C: Stream of events
+    C->>C: Process & commit updated offset
+```
+
+1. **Producer startup**: The producer connects to any bootstrap broker and requests cluster metadata, then caches it locally.
+2. **Metadata received**: The producer now knows all brokers, topics, partitions, and the current leader broker for each partition.
+3. **Producer selects partition**:
+   - **Key present**: `partition = hash(key) % number_of_partitions`
+     - Example: `key = orderId = 123` -> `hash(123) % 3 = P1`
+     - Guarantee: same key always maps to the same partition, preserving order.
+   - **Key absent**: uses round-robin to distribute load evenly.
+4. **Send directly to leader**: The producer routes data straight to the partition leader broker. No reverse proxy or load balancer is needed in between.
+5. **Leader writes data**: Leader appends the record sequentially to the partition log on disk, assigns the next offset, and exposes it for replication.
+6. **Followers replicate**: Followers continuously poll the leader, append to their own logs, and send back acknowledgments.
+   - If `acks=all`, the leader waits until all in-sync replicas (ISR) acknowledge before confirming back to the producer.
+7. **Consumer reads**: Consumers fetch metadata, connect directly to the partition leader, poll records using their current offset, and commit updated offsets back to Kafka.
+
+## Why Is Ordering Guaranteed Only Within a Partition?
+
+Data in a partition is written sequentially as an append-only log:
+
+```
+Broker 0 (Partition 0) -> [ Event A | Event C ]
+Broker 1 (Partition 1) -> [ Event B | Event D ]
+```
+
+- P0 and P1 reside on separate brokers and process writes independently in parallel.
+- Guaranteeing order across partitions would require cross-broker distributed synchronization/locking, defeating Kafka's horizontal scalability and throughput goals.
+
+## Consumer Partition Assignment
+
+Rules for how consumers read from partitions:
+
+- Consumers in the **same consumer group** divide partitions among themselves. Two consumers in the same group cannot read from the same partition at the same time to avoid duplicate processing and offset race conditions.
+- Consumers from **different consumer groups** can read from the same partition in parallel independently.
+- A single consumer can read from multiple partitions.
+
+```
+Topic T (3 partitions: P1, P2, P3)
+
+Consumer Group 1 (1:1 mapping):
+  C1 -> P1
+  C2 -> P2
+  C3 -> P3
+
+Consumer Group 2 (Independent parallel consumption):
+  C4 -> P1
+  C5 -> P2
+  C6 -> P3
+```
