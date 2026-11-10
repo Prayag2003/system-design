@@ -31,6 +31,11 @@ Kafka is a distributed log file that acts as a distributed event streaming platf
 - [Offset Commit Strategies](#offset-commit-strategies)
 - [Delivery Guarantees](#delivery-guarantees)
 - [How Does a Consumer Know an Event Has Arrived? (Long Polling)](#how-does-a-consumer-know-an-event-has-arrived-long-polling)
+- [What Happens During a Consumer Crash?](#what-happens-during-a-consumer-crash)
+- [Can Offsets Go Backwards?](#can-offsets-go-backwards)
+- [Does Every Event Have an Offset? Who Assigns It?](#does-every-event-have-an-offset-who-assigns-it)
+- [What Exactly Is Stored in `__consumer_offsets`?](#what-exactly-is-stored-in-__consumer_offsets)
+- [Backpressure Handling](#backpressure-handling)
 
 ---
 
@@ -557,3 +562,63 @@ sequenceDiagram
 ### Why Pull-Based Long Polling?
 - **Protects consumers from getting overwhelmed**: Slow or degraded downstream consumers dictate their own consumption pace instead of being flooded by producer spikes.
 - **Efficient batching**: Consumers can configure `fetch.min.bytes` to accumulate batches over the wait window, maximizing disk read and network I/O efficiency.
+
+## What Happens During a Consumer Crash?
+
+When a consumer crashes before committing its offset:
+- The consumer (or another consumer reassigned during a group rebalance) will restart and re-poll from the last committed offset.
+- This causes **duplicate processing** under **at-least-once** durability (which is Kafka's default delivery guarantee).
+- **Core Kafka philosophy**: Kafka prefers duplicate message processing over data loss.
+- **Handling duplicates**: Downstream services handle duplicate deliveries using **idempotent writes** (e.g., upserts, unique database constraint keys) or a deduplication cache/store.
+
+## Can Offsets Go Backwards?
+
+- **Under normal processing**: No. Offsets in the partition log are strictly append-only and monotonically increasing.
+- **Manual Seek**: A consumer application can explicitly rewind its read cursor using the API:
+  ```java
+  consumer.seek(topicPartition, targetOffset);
+  ```
+
+### Common Engineering Use Cases for Seek:
+- **Event Replay**: Re-processing old events after patching a downstream calculation bug.
+- **Debugging & Auditing**: Inspecting specific problematic historical payloads in production or staging.
+- **Backfilling**: Repopulating a newly created analytics database or cache from historical streams.
+
+## Does Every Event Have an Offset? Who Assigns It?
+
+- **Yes**, every single record in Kafka is assigned an offset.
+- **Scope**: The offset is unique and sequential **only within its partition**, not across the entire topic or cluster.
+- **Who assigns it?**: The **partition leader broker** assigns the offset sequentially at the exact moment it appends the record to disk.
+- **Where are consumer offsets tracked?**: In the special internal compacted topic named `__consumer_offsets`.
+
+## What Exactly Is Stored in `__consumer_offsets`?
+
+Kafka records committed positions using a composite key-value structure:
+
+$$\text{Key: } (\text{groupId}, \text{topic}, \text{partition}) \longrightarrow \text{Value: } \text{committedOffset}$$
+
+### Example Table:
+| Consumer Group ID | Topic | Partition | Committed Offset |
+|-------------------|-------|-----------|------------------|
+| `payment-service` | `orders` | `P0` | `100` |
+| `payment-service` | `orders` | `P1` | `80` |
+| `analytics-service` | `orders` | `P0` | `105` |
+| `analytics-service` | `orders` | `P1` | `105` |
+
+Each consumer group maintains its own row per partition independently, ensuring no interference across services.
+
+## Backpressure Handling
+
+**Backpressure** is a system condition where producers generate data faster than consumers can process it.
+
+### Problems Caused by Lack of Backpressure (in Push-based systems):
+- Memory buffers fill up rapidly.
+- Processing threads get blocked.
+- Out Of Memory (OOM) errors and JVM crashes.
+- Unhandled drops cause data loss or cascading system outages.
+
+### How Kafka Naturally Solves Backpressure:
+- **Client-Driven Pull Architecture**: Kafka uses a pull-based model rather than pushing data to consumers.
+- **Autonomous Consumption Rate**: Consumers poll only what they have resource capacity to handle (`max.poll.records`). If a consumer slows down (e.g., heavy DB operations or external API throttling), it simply fetches fewer records or pauses polling.
+- **Durable Disk Buffer**: Unread events safely buffer on the Kafka brokers on disk without dropping, preserved until their retention threshold (`retention.ms` / `retention.bytes`) expires. The slow consumer can safely catch up whenever capacity recovers.
+
