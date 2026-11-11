@@ -19,3 +19,9 @@ system-design/
 | Topic | Description | File |
 |-------|-------------|------|
 | Kafka | Distributed event streaming platform | [concepts/kafka/](concepts/kafka/) |
+
+## Implementations
+
+| Project | Description | Path |
+|---------|-------------|------|
+| Kafka Lab & Order Pipeline | Local KRaft cluster + UI + Hands-on pipeline | [implementations/kafka/](implementations/kafka/) |
