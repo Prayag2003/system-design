@@ -8,6 +8,8 @@
 .vscode/
 .idea/
 
-# Misc
-*.log
+# Build tools
+target/
+*.class
+.mvn/
 
