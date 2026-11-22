@@ -2,6 +2,9 @@
 
 A production-grade, event-driven implementation of the **Amazon 7-Step Order Fulfillment Pipeline** built using Java and Spring Boot.
 
+> [!NOTE]
+> For a full, beginner-friendly walkthrough explaining every component, file, flow, and Spring Boot annotation from first principles, read **[PROJECT_OVERVIEW.md](PROJECT_OVERVIEW.md)**.
+
 ---
 
 ## 1. What You Will Learn (Spring Boot & Kafka Fundamentals)
