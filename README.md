@@ -19,6 +19,7 @@ system-design/
 | Topic | Description | File |
 |-------|-------------|------|
 | Kafka | Distributed event streaming platform | [concepts/kafka/](concepts/kafka/) |
+| Caching | High-speed temporary storage to reduce latency and database load | [concepts/caching/](concepts/caching/) |
 
 ## Implementations
 
