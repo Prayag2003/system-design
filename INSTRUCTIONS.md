@@ -80,4 +80,5 @@ When adding a new file, add a row to the table in `README.md`.
   - `[feat-kafka]: add async processing options`
   - `[fix-kafka]: fix mermaid diagram syntax`
 - Keep commits incremental and focused. One logical change per commit.
+- Break larger additions into multiple small, logical commits rather than one single commit.
 - Always ask before committing or pushing.
